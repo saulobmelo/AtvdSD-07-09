@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <title>Mural Distribuído (Front-end)</title>
+</head>
+<body>
+<h2>Mural (nó configurável)</h2>
+<label>Endpoint do nó: <input id="nodeUrl" value="http://localhost:8000"/></label><br/>
+<button onclick="loadMessages()">Carregar Mensagens</button>
+<div id="messages"></div>
+
+<h3>Postar (requer login)</h3>
+<input id="author" placeholder="Autor (ex: alice)"/><br/>
+<input id="password" placeholder="Senha"/><br/>
+<textarea id="content" placeholder="Conteúdo"></textarea><br/>
+<button onclick="postMessage()">Postar</button>
+
+<script>
+    async function loadMessages() {
+      const url = document.getElementById('nodeUrl').value + '/messages';
+      try {
+        const res = await fetch(url);
+        if (!res.ok) {
+          document.getElementById('messages').innerHTML =
+            `<p style="color:red;">Erro ao carregar mensagens (${res.status})</p>`;
+          return;
+        }
+        const msgs = await res.json();
+        const div = document.getElementById('messages');
+        if (msgs.length === 0) {
+          div.innerHTML = "<i>Nenhuma mensagem encontrada.</i>";
+          return;
+        }
+        div.innerHTML = msgs.map(m =>
+          `<div>
+             <b>${m.author}</b> (origin: ${m.originNodeId})
+             [${new Date(m.timestamp).toLocaleString()}]:
+             ${m.content}
+           </div>`
+        ).join('');
+      } catch (err) {
+        document.getElementById('messages').innerHTML =
+          `<p style="color:red;">Falha na conexão: ${err}</p>`;
+      }
+    }
+
+    async function postMessage() {
+      const node = document.getElementById('nodeUrl').value;
+      const author = document.getElementById('author').value;
+      const password = document.getElementById('password').value;
+      const content = document.getElementById('content').value;
+
+      const body = { author, content };
+      try {
+        const res = await fetch(node + '/messages', {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Basic ' + btoa(author + ':' + password),
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(body)
+        });
+        if (res.status === 201) {
+          alert('Mensagem postada com sucesso!');
+          loadMessages();
+        } else {
+          const msg = await res.text();
+          alert('Erro ao postar: ' + msg);
+        }
+      } catch (err) {
+        alert('Falha na conexão: ' + err);
+      }
+    }
+</script>
+</body>
+</html>
