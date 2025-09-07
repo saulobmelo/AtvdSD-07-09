@@ -33,13 +33,11 @@ public class NodeServer {
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
         server.createContext("/messages", this::handleMessages);
         server.createContext("/replicate", this::handleReplicate);
-        server.createContext("/simulate", this::handleSimulate);
-        server.createContext("/status", this::handleStatus);
         server.setExecutor(executor);
         server.start();
 
         log("Servidor iniciado na porta %d", port);
-        log("Digite seu usuário ou 'listar' para ver mensagens já armazenadas");
+        log("Comandos disponíveis: listar | offline | online | sair | <usuário>");
 
         // inicia thread de input do usuário
         executor.submit(this::consoleInputLoop);
@@ -49,15 +47,33 @@ public class NodeServer {
     private void consoleInputLoop() {
         Scanner sc = new Scanner(System.in);
         while (true) {
-            System.out.println("\n[" + nodeId + "] Digite seu usuário ('listar' para ver mensagens, 'sair' para encerrar): ");
+            System.out.println("\n[" + nodeId + "] Digite um comando ou usuário:");
             String user = sc.nextLine().trim();
 
-            if (user.equalsIgnoreCase("sair")) break;
+            if (user.equalsIgnoreCase("sair")) {
+                System.out.println("[" + nodeId + "] Encerrando input do console.");
+                break;
+            }
+
             if (user.equalsIgnoreCase("listar")) {
                 listarMensagens();
                 continue;
             }
 
+            if (user.equalsIgnoreCase("offline")) {
+                acceptReplication = false;
+                System.out.println("[" + nodeId + "] Agora estou OFFLINE (não recebo replicações).");
+                continue;
+            }
+
+            if (user.equalsIgnoreCase("online")) {
+                acceptReplication = true;
+                System.out.println("[" + nodeId + "] Agora estou ONLINE (voltando a receber replicações).");
+                executor.submit(this::reconcileFromPeers);
+                continue;
+            }
+
+            // fluxo normal de envio de mensagem
             System.out.print("[" + nodeId + "] Senha: ");
             String pass = sc.nextLine().trim();
 
@@ -126,28 +142,6 @@ public class NodeServer {
             log("Recebeu replicação de %s: %s", m.getOriginNodeId(), m.getContent());
         }
         sendPlain(exchange, 200, "OK");
-    }
-
-    private void handleSimulate(HttpExchange exchange) throws IOException {
-        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-            sendPlain(exchange, 405, "Method Not Allowed");
-            return;
-        }
-        String body = readBody(exchange);
-        Map<String, Object> map = gson.fromJson(body, Map.class);
-        Boolean offline = (Boolean) map.getOrDefault("offline", Boolean.FALSE);
-        acceptReplication = !offline;
-        log("Simulação: offline=%s", offline);
-        if (!offline) executor.submit(this::reconcileFromPeers);
-        sendPlain(exchange, 200, "OK");
-    }
-
-    private void handleStatus(HttpExchange exchange) throws IOException {
-        Map<String,Object> st = new HashMap<>();
-        st.put("nodeId", nodeId);
-        st.put("port", port);
-        st.put("totalMessages", store.listMessages().size());
-        sendJson(exchange, 200, st);
     }
 
     // ==== REPLICAÇÃO E RECONCILIAÇÃO ====
